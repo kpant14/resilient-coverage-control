@@ -8,6 +8,7 @@ from matplotlib import cm
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 import matplotlib as mpl
+from bearing_rigidity_utils import create_adjacency_matrix, get_neighbors_bearing, get_neighbors_state
 mpl.rcParams['font.size'] = 14
 mpl.rcParams['text.usetex'] = True
 
@@ -204,7 +205,7 @@ def animate(anim_params):
 class MPC_CBF_Unicycle:
     def __init__(self, init_state, n_neighbors, dt ,N, v_lim, omega_lim,  
                  Q, R, cbf_const, 
-                 obstacles= None,  obs_diam = 0.5, robot_diam = 0.5, alpha=10):
+                 obstacles= None,  obs_diam = 0.5, robot_diam = 0.5, alpha=10, mu=10):
         
         self.dt = dt # Period
         self.N = N  # Horizon Length 
@@ -230,6 +231,8 @@ class MPC_CBF_Unicycle:
         self.cbf_const = cbf_const # Bool flag to enable obstacle avoidance
         self.alpha= alpha # Parameter for scalar class-K function, must be positive
         self.obstacles = obstacles
+
+        self.mu = mu
 
         # Setup with initialization params
         self.setup()
@@ -314,7 +317,8 @@ class MPC_CBF_Unicycle:
                 #print(nb_pos, target_bearing[j:j+2])
             track_cost = (state - ref).T @ Q @ (state - ref) 
             ctrl_cost = control.T @ R @ control 
-            cost = cost + track_cost + ctrl_cost + 10*bearing_cost/self.n_neighbors
+            cost = cost + track_cost + ctrl_cost + self.mu*bearing_cost/self.n_neighbors
+
 
 
             #cost = cost + ctrl_cost + 10*bearing_cost
@@ -423,43 +427,6 @@ class MPC_CBF_Unicycle:
         
         return u, X 
         
-def create_adjacency_matrix(edges):
-    """Creates an adjacency matrix for a given set of edges.
-
-    Args:
-        edges: A list of tuples, where each tuple represents an edge (node1, node2).
-
-    Returns:
-        A 2D list representing the adjacency matrix.
-    """
-    num_nodes = max(max(edge) for edge in edges) + 1
-    adj_matrix = [[0] * num_nodes for _ in range(num_nodes)]
-
-    for edge in edges:
-        node1, node2 = edge
-        adj_matrix[node1][node2] = 1
-        adj_matrix[node2][node1] = 1  
-    # For undirected graphs
-
-    return np.array(adj_matrix)
-
-def get_neighbors_state(agent_id, agent_states, adj_matrix):
-    neighbor_states = []
-    for j in range(adj_matrix.shape[1]):
-        if (adj_matrix[agent_id][j]==1):
-            neighbor_states.append(agent_states[j])
-    return np.array(neighbor_states)
-
-
-def get_neighbors_bearing(state, nb_states):
-    nb_bearing = []
-    for j in range(nb_states.shape[0]):
-        nb_bearing.append(get_bearing(state, nb_states[j]))
-    return np.array(nb_bearing)
-
-def get_bearing(state_i, state_j):
-    return (state_j[:2] - state_i[:2])/np.sqrt((state_j[0] - state_i[0])**2 + (state_j[1] - state_i[1])**2)
-    
 
 def main(args=None):
 
