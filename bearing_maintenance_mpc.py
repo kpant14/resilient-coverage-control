@@ -1,208 +1,12 @@
 import numpy as np
 import casadi
-import matplotlib.pyplot as plt
-from matplotlib import animation
-from plan_dubins import plan_dubins_path
-from scipy.spatial import Voronoi, voronoi_plot_2d
-from matplotlib import cm
-from matplotlib.colors import ListedColormap
-from matplotlib.lines import Line2D
-import matplotlib as mpl
 from bearing_rigidity_utils import create_adjacency_matrix, get_neighbors_bearing, get_neighbors_state
-mpl.rcParams['font.size'] = 14
-mpl.rcParams['text.usetex'] = True
+from anim_utils import animate
 
 def dm_to_array(dm):
         return np.array(dm.full())
 
-def animate(anim_params):
-    ref_state_list = anim_params['ref_state_list']
-    agents_init_state = anim_params['agents_init_state']
-    agents_state_list = anim_params['agents_state_list']
-    agents_control_list = anim_params['agents_control_list'] 
-    obstacles = anim_params['obstacles']
-    num_frames = anim_params['num_frames']
-    max_iter = anim_params['max_iter']
-    pred_horizon = anim_params['pred_horizon'] 
-    vor = anim_params['vor']
-    vcentroids = anim_params['vcentroids']
-    save = anim_params['save'] 
-    adj_matrix = anim_params['adj_matrix']
-    
-
-    def create_triangle(state=[0,0,0], h=0.2, w=0.15, update=False):
-        x, y, th = state
-        triangle = np.array([
-            [h, 0   ],
-            [0,  w/2],
-            [0, -w/2],
-            [h, 0   ]
-        ]).T
-        rotation_matrix = np.array([
-            [np.cos(th), -np.sin(th)],
-            [np.sin(th),  np.cos(th)]
-        ])
-        coords = np.array([[x, y]]) + (rotation_matrix @ triangle).T
-        if update == True:
-            return coords
-        else:
-            return coords[:3, :]
-
-
-    # Function to create a gradient-filled circle
-    def radial_gradient_circle(ax, center_x, center_y, radius, colormap='viridis'):
-        """
-        Creates a radial gradient circle.
-        """
-        # Create a meshgrid for the circle
-        x, y = np.meshgrid(np.linspace(center_x - radius, center_x + radius, 100),
-                        np.linspace(center_y - radius, center_y + radius, 100))
-        # Calculate the distance from the center for each point
-        r = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-        # Normalize the distance to be between 0 and 1
-        r = np.clip(r, 0, radius) / radius
-        # Create a colormap
-        cmap = plt.get_cmap(colormap).reversed()
-        # Map the distance to the colormap
-        colors = cmap(r)
-        # Plot the circle
-        ax.imshow(colors, extent=[center_x - radius, center_x + radius, center_y - radius, center_y + radius], alpha=0.1)
-        # Set aspect to 'equal' to ensure the circle looks circular
-        ax.set_aspect('equal')
-
-
-
-    def init():
-        return path_list, horizon_list
-    
-    def animate(i):
-        ax.clear()
-        for k in range(n_agents):
-            # get variables
-            x = agents_state_list[k][0, 0, i]
-            y = agents_state_list[k][1, 0, i]
-            th = agents_state_list[k][2, 0, i]
-
-            # update path
-            if i == 0:
-                path_list[k].set_data(np.array([]), np.array([]))
-            x_new = np.hstack((path_list[k].get_xdata(), x))
-            y_new = np.hstack((path_list[k].get_ydata(), y))
-            path, = ax.plot(x_new, y_new, 'r', linewidth=2)
-           
-            # update horizon
-            x_new = agents_state_list[k][0, :, i]
-            y_new = agents_state_list[k][1, :, i]
-            horizon, = ax.plot(x_new, y_new, 'x-g', alpha=0.5)
-            
-            #current_state_list[k].set_xy(create_triangle([x, y, th], update=True))
-            current_triangle = create_triangle([x, y, th])
-            current_state = ax.fill(current_triangle[:, 0], current_triangle[:, 1], color='b')
-            current_state = current_state[0]
-
-            # Draw a transparent circle
-            radial_gradient_circle(ax, x, y, radius=1.5, colormap='Reds')
-
-        if (vor != None):
-            den = num_frames/max_iter
-            # Show Centroids
-            for vcentroid in vcentroids[int(i/den)]:
-                ax.plot(vcentroid[0], vcentroid[1], 'o', color='blue')
-
-            voronoi_plot_2d(vor[int(i/den)], ax=ax, show_vertices=False, show_points = False, line_colors='orange', line_width=2)
-            for j in range(adj_matrix.shape[0]):
-                for k in range(adj_matrix.shape[1]):
-                    if (adj_matrix[j][k]==1):
-                        centroid_1 = vcentroids[int(i/den)][j]
-                        centroid_2 = vcentroids[int(i/den)][k]
-                        x = [centroid_1[0], centroid_2[0]]
-                        y = [centroid_1[1], centroid_2[1]]
-                        ax.plot(x, y, '--r', alpha=0.1)
-                
-            legend_elements = [ Line2D([0], [0], marker='>', color='b', markerfacecolor='b', markersize=15, label='Robots'),
-                                Line2D([0], [0], marker='x',color='g', markerfacecolor='g', markersize=15,label='MPC Predicted Path',),
-                                Line2D([0], [0], linestyle='-',color='orange', markerfacecolor='r', markersize=15,label='Voronoi Partition',),
-                                Line2D([0], [0], linestyle='--',color='r', markerfacecolor='r', markersize=15, alpha = 0.2, label='Desired Bearing',),
-                                Line2D([0], [0], linestyle='--',color='k', markerfacecolor='k', markersize=15,alpha = 0.2, label='Current Bearing',),
-                            ]
-
-            ax.legend(handles=legend_elements, loc='upper right', fontsize = 10)            
-        else:
-            legend_elements = [ Line2D([0], [0], marker='>', color='b', markerfacecolor='b', markersize=15, label='Robots'),
-                                Line2D([0], [0], marker='x',color='g', markerfacecolor='g', markersize=15,label='MPC Predicted Path',)
-                            ]
-
-            ax.legend(handles=legend_elements, loc='upper right', fontsize = 10)   
-
-        ax.set_xlim(0,5)
-        ax.set_ylim(0,5)
-        ax.set_xlabel('x position', fontsize =12)
-        ax.set_ylabel('y position', fontsize =12)       
-        for j in range(adj_matrix.shape[0]):
-            for k in range(adj_matrix.shape[1]):
-                if (adj_matrix[j][k]==1):
-                    state_agent_1 = agents_state_list[j][:, 0, i]
-                    state_agent_2 = agents_state_list[k][:, 0, i]
-                    x = [state_agent_1[0], state_agent_2[0]]
-                    y = [state_agent_1[1], state_agent_2[1]]
-                    ax.plot(x, y, '--k', alpha=0.1)
-
-        plt.tight_layout()
-        if (i ==0 or i==50 or i==149):
-            ax.set_rasterized(True)
-            plt.savefig(f'coverage_{i}.pdf')
-       
-  
-        return path, horizon
-
-    # create figure and axes
-    n_agents = 4
-    fig, ax = plt.subplots(figsize=(6, 6))
-    # create lines:
-    #   path
-    path_list = []
-    ref_path_list = []
-    horizon_list = []
-    current_state_list = []
-  
-    for k in range(n_agents):
-        path, = ax.plot([], [], 'r', linewidth=2)
-        ref_path, = ax.plot([], [], 'b', linewidth=2)
-        horizon, = ax.plot([], [], 'x-g', alpha=0.5)
-        current_triangle = create_triangle(agents_init_state[k, :])
-        current_state = ax.fill(current_triangle[:, 0], current_triangle[:, 1], color='y')
-        current_state = current_state[0]
-
-        path_list.append(path)
-        ref_path_list.append(ref_path)
-        horizon_list.append(horizon)
-        current_state_list.append(current_state)
-
-
-    
-    red_cmp = plt.get_cmap('Reds', 256)
-    red_cmp = ListedColormap(red_cmp(np.linspace(0, 0.3, 256)))
-    
-    fig.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(0, 1), cmap=red_cmp),
-             ax=ax, orientation='vertical',fraction=0.046, pad=0.04, label='Percent Coverage')
-    
-    
-    
-    sim = animation.FuncAnimation(
-        fig=fig,
-        func = animate,
-        init_func=init,
-        frames=num_frames,
-        interval=100,
-        blit=False,
-        repeat=False
-    )
-    if save == True:
-        sim.save(anim_params['file_name'], writer='ffmpeg', fps=10)
-    return sim
-
-
-class MPC_CBF_Unicycle:
+class BearingMaintenanceMPC:
     def __init__(self, init_state, n_neighbors, dt ,N, v_lim, omega_lim,  
                  Q, R, cbf_const, 
                  obstacles= None,  obs_diam = 0.5, robot_diam = 0.5, alpha=10, mu=10):
@@ -318,11 +122,6 @@ class MPC_CBF_Unicycle:
             track_cost = (state - ref).T @ Q @ (state - ref) 
             ctrl_cost = control.T @ R @ control 
             cost = cost + track_cost + ctrl_cost + self.mu*bearing_cost/self.n_neighbors
-
-
-
-            #cost = cost + ctrl_cost + 10*bearing_cost
-         
             next_state = X[:, k + 1]
             k_1 = self.f(state, control)
             k_2 = self.f(state + self.dt/2 * k_1, control)
@@ -331,20 +130,7 @@ class MPC_CBF_Unicycle:
             predicted_state = state + self.dt/6 * (k_1 + 2 * k_2 + 2 * k_3 + k_4)
             g = casadi.vertcat(g, next_state - predicted_state)
         
-        # for j in range(self.n_neighbors):
-        #     nb_state = P[(self.N + 1) + j*self.n_states: (self.N + 1) + (j+1)*self.n_states] 
-        #     nb_pos = nb_state[:2] 
-        #     bearing = (nb_pos - X[:2, 1])/casadi.norm_2((nb_pos - X[:2, 1]))
-        #     bearing_cost = bearing_cost + (target_bearing[j:j+2] - bearing).T @ (target_bearing[j:j+2] - bearing)
-        #     cost = cost + 10*bearing_cost
-
-        # for k in range(self.N):
-        #     state = X[:, k]
-        #     for j in range(self.n_neighbors):    
-        #         nb_state = P[(self.N+1)*self.n_states + j*self.n_states: (self.N+1)*self.n_states + (j+1)*self.n_states] 
-        #         nb_pos = nb_state[:2]
-        #         g = casadi.vertcat(g, (nb_pos[0] - state[0])**2 + (nb_pos[1] - state[1])**2 - 1)
-
+        # Add obstacle avoidance constraints
         if self.cbf_const:
             for k in range(self.N):
                 state = X[:, k]
@@ -400,10 +186,6 @@ class MPC_CBF_Unicycle:
             lbg[self.n_states * (self.N + 1):] = -casadi.inf
             ubg[self.n_states * (self.N + 1):] = 0
         else:
-            # lbg = casadi.DM.zeros((self.n_states * (self.N+1)+ self.n_neighbors * self.N))
-            # ubg = -casadi.DM.zeros((self.n_states * (self.N+1)+self.n_neighbors * self.N))
-            # lbg[self.n_states * (self.N + 1):] = 0
-            # ubg[self.n_states * (self.N + 1):] = casadi.inf
             lbg = casadi.DM.zeros((self.n_states * (self.N+1)))
             ubg = -casadi.DM.zeros((self.n_states * (self.N+1)))
            
@@ -462,7 +244,7 @@ def main(args=None):
                 n_neighbors[i]+=1         
 
     t0_list = [0 for i in range(n_agents)]
-    agents = [MPC_CBF_Unicycle(agents_init_state[i], n_neighbors[i], dt, N, v_lim, omega_lim, Q, R, obstacles= None, cbf_const=False) for i in range(n_agents)]
+    agents = [BearingMaintenanceMPC(agents_init_state[i], n_neighbors[i], dt, N, v_lim, omega_lim, Q, R, obstacles= None, cbf_const=False) for i in range(n_agents)]
     ref_state_list = []
 
     state_0_list = [casadi.DM([agents_init_state[i][0], agents_init_state[i][1], agents_init_state[i][2]]) for i in range(n_agents)]
